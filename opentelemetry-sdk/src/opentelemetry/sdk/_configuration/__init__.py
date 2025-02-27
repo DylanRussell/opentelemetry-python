@@ -17,12 +17,15 @@
 OpenTelemetry SDK Configurator for Easy Instrumentation with Distros
 """
 
+import inspect
 import logging
 import os
 from abc import ABC, abstractmethod
 from os import environ
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
 
+from grpc import ChannelCredentials  # type: ignore
+from requests import Session
 from typing_extensions import Literal
 
 from opentelemetry._events import set_event_logger_provider
@@ -39,6 +42,7 @@ from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor, LogExporter
 from opentelemetry.sdk.environment_variables import (
     _OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED,
+    OTEL_EXPORTER_OTLP_CREDENTIAL_PROVIDER,
     OTEL_EXPORTER_OTLP_LOGS_PROTOCOL,
     OTEL_EXPORTER_OTLP_METRICS_PROTOCOL,
     OTEL_EXPORTER_OTLP_PROTOCOL,
@@ -88,6 +92,14 @@ _DEFAULT_ID_GENERATOR = _RANDOM_ID_GENERATOR
 _OTEL_SAMPLER_ENTRY_POINT_GROUP = "opentelemetry_traces_sampler"
 
 _logger = logging.getLogger(__name__)
+
+
+def _import_config_component(
+    selected_component: str, entry_point_name: str
+) -> object:
+    return _import_config_components([selected_component], entry_point_name)[
+        0
+    ][1]
 
 
 def _import_config_components(
@@ -189,11 +201,41 @@ def _get_exporter_names(
     ]
 
 
+def _init_exporter(
+    exporter_class: Type[Union[SpanExporter, MetricExporter, LogExporter]],
+    otlp_credential_param: tuple[
+        str, Union[ChannelCredentials | Session]
+    ] = None,
+) -> Union[SpanExporter, MetricExporter, LogExporter]:
+    if not otlp_credential_param:
+        return exporter_class()
+    credential_key, credential = otlp_credential_param
+    params = inspect.signature(exporter_class.__init__).parameters
+    if (
+        credential_key == "credentials"
+        and "credentials" in params
+        and isinstance(credential, params["credentials"].annotation)
+    ):
+        print("initializing exporter with credentials.")
+        return exporter_class(credentials=credential)
+    if (
+        credential_key == "session"
+        and "session" in params
+        and isinstance(credential, params["session"].annotation)
+    ):
+        print("initializing exporter with session.")
+        return exporter_class(session=credential)
+    return exporter_class()
+
+
 def _init_tracing(
     exporters: Dict[str, Type[SpanExporter]],
     id_generator: IdGenerator = None,
     sampler: Sampler = None,
     resource: Resource = None,
+    otlp_credential_param: tuple[
+        str, Union[ChannelCredentials | Session]
+    ] = None,
 ):
     provider = TracerProvider(
         id_generator=id_generator,
@@ -203,9 +245,10 @@ def _init_tracing(
     set_tracer_provider(provider)
 
     for _, exporter_class in exporters.items():
-        exporter_args = {}
         provider.add_span_processor(
-            BatchSpanProcessor(exporter_class(**exporter_args))
+            BatchSpanProcessor(
+                _init_exporter(exporter_class, otlp_credential_param)
+            )
         )
 
 
@@ -214,6 +257,9 @@ def _init_metrics(
         str, Union[Type[MetricExporter], Type[MetricReader]]
     ],
     resource: Resource = None,
+    otlp_credential_param: tuple[
+        str, Union[ChannelCredentials | Session]
+    ] = None,
 ):
     metric_readers = []
 
@@ -225,7 +271,9 @@ def _init_metrics(
         else:
             metric_readers.append(
                 PeriodicExportingMetricReader(
-                    exporter_or_reader_class(**exporter_args)
+                    _init_exporter(
+                        exporter_or_reader_class, otlp_credential_param
+                    )
                 )
             )
 
@@ -237,14 +285,18 @@ def _init_logging(
     exporters: Dict[str, Type[LogExporter]],
     resource: Resource = None,
     setup_logging_handler: bool = True,
+    otlp_credential_param: dict[
+        str, Union[ChannelCredentials | Session]
+    ] = None,
 ):
     provider = LoggerProvider(resource=resource)
     set_logger_provider(provider)
 
     for _, exporter_class in exporters.items():
-        exporter_args = {}
         provider.add_log_record_processor(
-            BatchLogRecordProcessor(exporter_class(**exporter_args))
+            BatchLogRecordProcessor(
+                _init_exporter(exporter_class, otlp_credential_param)
+            )
         )
 
     event_logger_provider = EventLoggerProvider(logger_provider=provider)
@@ -397,13 +449,35 @@ def _initialize_components(
     # from the env variable else defaults to "unknown_service"
     resource = Resource.create(resource_attributes)
 
+    otlp_credential_param = None
+    credential_env = os.getenv(OTEL_EXPORTER_OTLP_CREDENTIAL_PROVIDER)
+    print("looking for creds")
+    if credential_env:
+        credentials = _import_config_component(
+            credential_env, "opentelemetry_otlp_credential_provider"
+        )()
+        if isinstance(credentials, ChannelCredentials):
+            print("found channel creds")
+            otlp_credential_param = ("credentials", credentials)
+        elif isinstance(credentials, Session):
+            print("found session")
+            otlp_credential_param = ("session", credentials)
+        else:
+            raise RuntimeError(
+                f"{credential_env} is neither a ChannelCredentials or Session type."
+            )
     _init_tracing(
         exporters=span_exporters,
         id_generator=id_generator,
         sampler=sampler,
         resource=resource,
+        otlp_credential_param=otlp_credential_param,
     )
-    _init_metrics(metric_exporters, resource)
+    _init_metrics(
+        metric_exporters,
+        resource,
+        otlp_credential_param=otlp_credential_param,
+    )
     if setup_logging_handler is None:
         setup_logging_handler = (
             os.getenv(
@@ -413,7 +487,12 @@ def _initialize_components(
             .lower()
             == "true"
         )
-    _init_logging(log_exporters, resource, setup_logging_handler)
+    _init_logging(
+        log_exporters,
+        resource,
+        setup_logging_handler,
+        otlp_credential_param=otlp_credential_param,
+    )
 
 
 class _BaseConfigurator(ABC):
