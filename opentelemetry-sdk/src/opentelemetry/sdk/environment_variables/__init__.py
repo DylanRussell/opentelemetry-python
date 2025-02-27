@@ -12,6 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+OTEL_EXPORTER_OTLP_CREDENTIAL_PROVIDER = "OTEL_EXPORTER_OTLP_CREDENTIAL_PROVIDER"
+"""
+.. envvar:: OTEL_EXPORTER_OTLP_CREDENTIAL_PROVIDER
+
+The :envvar:`OTEL_EXPORTER_OTLP_CREDENTIAL_PROVIDER` provides either ChannelCredentials for grpc OTLP exporters,
+or request.Session for HTML exporters.
+"""
+# TODO: add corresponding environment variables specific to just the trace / log / metric exporters.
+
 OTEL_SDK_DISABLED = "OTEL_SDK_DISABLED"
 """
 .. envvar:: OTEL_SDK_DISABLED
