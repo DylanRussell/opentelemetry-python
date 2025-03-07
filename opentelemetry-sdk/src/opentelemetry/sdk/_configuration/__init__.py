@@ -52,6 +52,7 @@ from opentelemetry.sdk.environment_variables import (
     OTEL_TRACES_SAMPLER,
     OTEL_TRACES_SAMPLER_ARG,
 )
+from opentelemetry.sdk._config_customizer import _BaseConfiguratorCustomizer
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import (
     MetricExporter,
