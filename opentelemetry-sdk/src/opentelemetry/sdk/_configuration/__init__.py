@@ -417,6 +417,7 @@ def _initialize_components(
     resource_attributes: Attributes | None = None,
     id_generator: IdGenerator | None = None,
     setup_logging_handler: bool | None = None,
+    customizer: _BaseConfiguratorCustomizer | None = None
 ):
     if trace_exporter_names is None:
         trace_exporter_names = []
