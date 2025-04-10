@@ -13,11 +13,13 @@
 # limitations under the License.
 
 # pylint: disable=protected-access
+import gc
 import logging
 import multiprocessing
 import os
 import time
 import unittest
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock, call, patch
 
@@ -587,6 +589,23 @@ class TestBatchLogRecordProcessor(unittest.TestCase):
         self.assertTrue(parent_conn.recv())
         process.join()
         self.assertTrue(len(exporter.get_finished_logs()) == 0)
+
+    def test_batch_log_record_processor_gc(self):
+        # Given a BatchLogRecordProcessor
+        exporter = InMemoryLogExporter()
+        processor = BatchLogRecordProcessor(exporter)
+        weak_ref = weakref.ref(processor)
+        processor.shutdown()
+
+        # When the processor is garbage collected
+        del processor
+        gc.collect()
+
+        # Then the reference to the processor should no longer exist
+        self.assertIsNone(
+            weak_ref(),
+            "The BatchLogRecordProcessor object created by this test wasn't garbage collected",
+        )
 
 
 class TestConsoleLogExporter(unittest.TestCase):
