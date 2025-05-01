@@ -49,6 +49,7 @@ class LogExportResult(enum.Enum):
     SUCCESS = 0
     FAILURE = 1
 
+
 class LogExporter(abc.ABC):
     """Interface for exporting logs.
     Interface to be implemented by services that want to export logs received

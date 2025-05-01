@@ -31,6 +31,8 @@ from opentelemetry.sdk.environment_variables import (
 from opentelemetry.sdk.trace import export
 from opentelemetry.sdk.trace.export import logger
 
+# pylint: disable=protected-access
+
 
 class MySpanExporter(export.SpanExporter):
     """Very simple span exporter used for testing."""

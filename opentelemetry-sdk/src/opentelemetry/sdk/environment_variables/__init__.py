@@ -120,6 +120,7 @@ OTEL_BSP_EXPORT_TIMEOUT = "OTEL_BSP_EXPORT_TIMEOUT"
 .. envvar:: OTEL_BSP_EXPORT_TIMEOUT
 
 The :envvar:`OTEL_BSP_EXPORT_TIMEOUT` represents the maximum allowed time to export data from the BatchSpanProcessor.
+This environment variable currently does nothing, see https://github.com/open-telemetry/opentelemetry-python/issues/4555.
 Default: 30000
 """
 

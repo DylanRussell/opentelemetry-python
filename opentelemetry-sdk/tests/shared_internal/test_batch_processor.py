@@ -34,6 +34,8 @@ from opentelemetry.sdk._logs import (
 from opentelemetry.sdk._logs.export import (
     BatchLogRecordProcessor,
 )
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.util.instrumentation import InstrumentationScope
 
 EMPTY_LOG = LogData(
@@ -41,11 +43,18 @@ EMPTY_LOG = LogData(
     instrumentation_scope=InstrumentationScope("example", "example"),
 )
 
+BASIC_SPAN = ReadableSpan(
+    "MySpan",
+    instrumentation_scope=InstrumentationScope("example", "example"),
+)
 
-# BatchLogRecodpRocessor initializes / uses BatchProcessor.
+multiprocessing.set_start_method("fork")
+
+
+# BatchLogRecodProcessor/BatchSpanProcessor initialize and use BatchProcessor.
 @pytest.mark.parametrize(
     "batch_processor_class,telemetry",
-    [(BatchLogRecordProcessor, EMPTY_LOG)],
+    [(BatchLogRecordProcessor, EMPTY_LOG), (BatchSpanProcessor, BASIC_SPAN)],
 )
 class TestBatchProcessor:
     # pylint: disable=no-self-use
@@ -54,7 +63,7 @@ class TestBatchProcessor:
     ):
         exporter = Mock()
         batch_processor = batch_processor_class(
-            exporter=exporter,
+            exporter,
             max_queue_size=15,
             max_export_batch_size=15,
             # Will not reach this during the test, this sleep should be interrupted when batch size is reached.
@@ -77,7 +86,7 @@ class TestBatchProcessor:
     ):
         exporter = Mock()
         batch_processor = batch_processor_class(
-            exporter=exporter,
+            exporter,
             max_queue_size=15,
             max_export_batch_size=15,
             schedule_delay_millis=100,
@@ -92,7 +101,7 @@ class TestBatchProcessor:
     ):
         exporter = Mock()
         batch_processor = batch_processor_class(
-            exporter=exporter,
+            exporter,
             # Neither of these thresholds should be hit before test ends.
             max_queue_size=15,
             max_export_batch_size=15,
@@ -117,7 +126,7 @@ class TestBatchProcessor:
     ):
         exporter = Mock()
         batch_processor = batch_processor_class(
-            exporter=exporter,
+            exporter,
             # Neither of these thresholds should be hit before test ends.
             max_queue_size=15,
             max_export_batch_size=15,
@@ -136,7 +145,7 @@ class TestBatchProcessor:
     def test_with_multiple_threads(self, batch_processor_class, telemetry):
         exporter = Mock()
         batch_processor = batch_processor_class(
-            exporter=exporter,
+            exporter,
             max_queue_size=3000,
             max_export_batch_size=1000,
             schedule_delay_millis=30000,
@@ -176,8 +185,6 @@ class TestBatchProcessor:
         # clear the logs/spans in the child process.
         for _ in range(9):
             batch_processor.emit(telemetry)
-
-        multiprocessing.set_start_method("fork")
 
         def child(conn):
             for _ in range(100):
