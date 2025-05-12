@@ -20,12 +20,12 @@ import logging
 import os
 import threading
 import weakref
-from abc import ABC
+from abc import abstractmethod
 from typing import (
-    TYPE_CHECKING,
-    Deque,
+    Generic,
     Optional,
-    Union,
+    Protocol,
+    TypeVar,
 )
 
 from opentelemetry.context import (
@@ -36,12 +36,6 @@ from opentelemetry.context import (
 )
 from opentelemetry.util._once import Once
 
-if TYPE_CHECKING:
-    from opentelemetry.sdk._logs import LogData
-    from opentelemetry.sdk._logs.export import LogExporter
-    from opentelemetry.sdk.trace import ReadableSpan
-    from opentelemetry.sdk.trace.export import SpanExporter
-
 
 class BatchExportStrategy(enum.Enum):
     EXPORT_ALL = 0
@@ -49,12 +43,27 @@ class BatchExportStrategy(enum.Enum):
     EXPORT_AT_LEAST_ONE_BATCH = 2
 
 
-class BatchProcessor(ABC):
-    _queue: Deque["Union[LogData, ReadableSpan]"]
+Telemetry = TypeVar("Telemetry")
+
+
+class Exporter(Protocol[Telemetry]):
+    @abstractmethod
+    def export(self, batch: list[Telemetry]):
+        raise NotImplementedError
+
+    @abstractmethod
+    def shutdown(self):
+        raise NotImplementedError
+
+
+class BatchProcessor(Generic[Telemetry]):
+    """This class can be used with exporter's that implement the above
+    Exporter interface to buffer and send telemetry in batch through
+     the exporter."""
 
     def __init__(
         self,
-        exporter: "Union[LogExporter, SpanExporter]",
+        exporter: Exporter[Telemetry],
         schedule_delay_millis: float,
         max_export_batch_size: int,
         export_timeout_millis: float,
@@ -141,7 +150,7 @@ class BatchProcessor(ABC):
                 token = attach(set_value(_SUPPRESS_INSTRUMENTATION_KEY, True))
                 try:
                     self._exporter.export(
-                        [  # pyright: ignore [reportArgumentType]
+                        [
                             # Oldest records are at the back, so pop from there.
                             self._queue.pop()
                             for _ in range(
@@ -158,7 +167,7 @@ class BatchProcessor(ABC):
                     )
                 detach(token)
 
-    def emit(self, data: "Union[LogData, ReadableSpan]") -> None:
+    def emit(self, data: Telemetry) -> None:
         if self._shutdown:
             self._logger.info("Shutdown called, ignoring %s.", self._exporting)
             return

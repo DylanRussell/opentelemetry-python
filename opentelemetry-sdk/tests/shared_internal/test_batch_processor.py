@@ -63,7 +63,7 @@ class TestBatchProcessor:
     ):
         exporter = Mock()
         batch_processor = batch_processor_class(
-            exporter,
+            exporter=exporter,
             max_queue_size=15,
             max_export_batch_size=15,
             # Will not reach this during the test, this sleep should be interrupted when batch size is reached.
@@ -86,7 +86,7 @@ class TestBatchProcessor:
     ):
         exporter = Mock()
         batch_processor = batch_processor_class(
-            exporter,
+            exporter=exporter,
             max_queue_size=15,
             max_export_batch_size=15,
             schedule_delay_millis=100,
@@ -101,7 +101,7 @@ class TestBatchProcessor:
     ):
         exporter = Mock()
         batch_processor = batch_processor_class(
-            exporter,
+            exporter=exporter,
             # Neither of these thresholds should be hit before test ends.
             max_queue_size=15,
             max_export_batch_size=15,
@@ -112,7 +112,7 @@ class TestBatchProcessor:
         batch_processor.emit(telemetry)
         batch_processor.shutdown()
         exporter.export.assert_called_once_with([telemetry])
-        assert batch_processor._shutdown is True
+        assert batch_processor._batch_processor._shutdown is True
 
         # This should not be flushed.
         batch_processor.emit(telemetry)
@@ -126,7 +126,7 @@ class TestBatchProcessor:
     ):
         exporter = Mock()
         batch_processor = batch_processor_class(
-            exporter,
+            exporter=exporter,
             # Neither of these thresholds should be hit before test ends.
             max_queue_size=15,
             max_export_batch_size=15,
@@ -145,7 +145,7 @@ class TestBatchProcessor:
     def test_with_multiple_threads(self, batch_processor_class, telemetry):
         exporter = Mock()
         batch_processor = batch_processor_class(
-            exporter,
+            exporter=exporter,
             max_queue_size=3000,
             max_export_batch_size=1000,
             schedule_delay_millis=30000,
@@ -185,6 +185,8 @@ class TestBatchProcessor:
         # clear the logs/spans in the child process.
         for _ in range(9):
             batch_processor.emit(telemetry)
+
+        multiprocessing.set_start_method("fork")
 
         def child(conn):
             for _ in range(100):
