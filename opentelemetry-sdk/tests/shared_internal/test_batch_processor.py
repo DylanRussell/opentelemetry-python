@@ -20,10 +20,18 @@ import time
 import unittest
 import weakref
 from platform import system
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
+from requests import Session
+from requests.models import Response
 
+from opentelemetry.exporter.otlp.proto.http._log_exporter import (
+    OTLPLogExporter,
+)
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+    OTLPSpanExporter,
+)
 from opentelemetry.sdk._logs import (
     LogData,
     LogRecord,
@@ -43,6 +51,13 @@ EMPTY_LOG = LogData(
 BASIC_SPAN = ReadableSpan(
     "MySpan",
     instrumentation_scope=InstrumentationScope("example", "example"),
+    context=Mock(
+        **{
+            "trace_state": {"a": "b", "c": "d"},
+            "span_id": 10217189687419569865,
+            "trace_id": 67545097771067222548457157018666467027,
+        }
+    ),
 )
 
 if system() != "Windows":
@@ -193,3 +208,33 @@ class TestBatchProcessor:
 
         # Then the reference to the processor should no longer exist
         assert weak_ref() is None
+
+    def test_shutdown_waits_30sec_before_cancelling_export(
+        self, batch_processor_class, telemetry, caplog
+    ):
+        resp = Response()
+        resp.status_code = 200
+
+        def export_side_effect(*args, **kwargs):
+            time.sleep(5)
+            return resp
+
+        if type(BASIC_SPAN) is type(telemetry):
+            exporter = OTLPSpanExporter()
+        else:
+            exporter = OTLPLogExporter()
+
+        with patch.object(Session, "post") as mock_post:
+            mock_post.side_effect = export_side_effect
+            processor = batch_processor_class(
+                exporter,
+                max_queue_size=200,
+                max_export_batch_size=10,
+                schedule_delay_millis=30000,
+            )
+            print("emitting..")
+            processor._batch_processor.emit(telemetry)
+            print("shutting down..")
+            processor.shutdown(timeout_millis=4000)
+            print("finished shutting down..")
+        print(caplog.record_tuples)
