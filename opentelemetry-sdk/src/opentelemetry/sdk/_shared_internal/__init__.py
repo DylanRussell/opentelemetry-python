@@ -174,8 +174,9 @@ class BatchProcessor(Generic[Telemetry]):
                             )
                         ]
                     )
-                    print("export succeded??")
-                except Exception:  # pylint: disable=broad-exception-caught
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    print(e)
+                    raise e
                     self._logger.exception(
                         "Exception while exporting %s.", self._exporting
                     )
@@ -195,7 +196,7 @@ class BatchProcessor(Generic[Telemetry]):
             self._worker_awaken.set()
 
     # LoggerProvider calls shutdown without arguments currently, so the default is used.
-    def shutdown(self, timeout_millis=30000):
+    def shutdown(self, timeout_millis: int = 30000):
         if self._shutdown:
             return
         # Prevents emit and force_flush from further calling export.

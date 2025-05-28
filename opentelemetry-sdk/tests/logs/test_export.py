@@ -19,11 +19,23 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from sys import version_info
+from typing import Optional
 from unittest.mock import Mock, patch
 
+from grpc import StatusCode, server
 from pytest import mark
 
 from opentelemetry._logs import SeverityNumber
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import (
+    OTLPLogExporter,
+)
+from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import (
+    ExportLogsServiceResponse,
+)
+from opentelemetry.proto.collector.logs.v1.logs_service_pb2_grpc import (
+    LogsServiceServicer,
+    add_LogsServiceServicer_to_server,
+)
 from opentelemetry.sdk import trace
 from opentelemetry.sdk._logs import (
     LogData,
@@ -50,9 +62,28 @@ from opentelemetry.trace import TraceFlags
 from opentelemetry.trace.span import INVALID_SPAN_CONTEXT
 
 EMPTY_LOG = LogData(
-    log_record=LogRecord(),
+    log_record=LogRecord(span_id=3, trace_id=3, trace_flags=TraceFlags(0x01),
+                         severity_number=SeverityNumber.WARN),
     instrumentation_scope=InstrumentationScope("example", "example"),
 )
+
+
+class LogsServiceServicerWithExportParams(LogsServiceServicer):
+    def __init__(
+        self,
+        export_result: StatusCode,
+        optional_export_sleep: Optional[float] = None,
+    ):
+        self.export_result = export_result
+        self.optional_export_sleep = optional_export_sleep
+
+    # pylint: disable=invalid-name,unused-argument
+    def Export(self, request, context):
+        if self.optional_export_sleep:
+            time.sleep(self.optional_export_sleep)
+        context.set_code(self.export_result)
+
+        return ExportLogsServiceResponse()
 
 
 class TestSimpleLogRecordProcessor(unittest.TestCase):
@@ -338,6 +369,69 @@ class TestSimpleLogRecordProcessor(unittest.TestCase):
 # before the end of the test, otherwise the worker thread will continue
 # to run after the end of the test.
 class TestBatchLogRecordProcessor(unittest.TestCase):
+    def test_shutdown_cancels_longrunning_export(self):
+        svr = server(ThreadPoolExecutor(max_workers=10))
+
+        svr.add_insecure_port("127.0.0.1:4317")
+        exporter = OTLPLogExporter()
+
+        svr.start()
+        # Server will not respond with OK until 5 seconds has elapsed.
+        add_LogsServiceServicer_to_server(
+            LogsServiceServicerWithExportParams(
+                StatusCode.OK, optional_export_sleep=5
+            ),
+            svr,
+        )
+        processor = BatchLogRecordProcessor(
+            exporter,
+            max_queue_size=200,
+            max_export_batch_size=10,
+            schedule_delay_millis=30000,
+        )
+        with self.assertLogs(level="WARNING") as cm:
+            processor.emit(EMPTY_LOG)
+            before = time.time()
+            # Shutdown should cancel export after 4 seconds
+            processor.shutdown(timeout_millis=4000)
+            after = time.time()
+            self.assertTrue(after - before < 4.1)
+            self.assertEqual(
+                cm.records[0].message, "Exception while exporting Log."
+            )
+        svr.stop(None)
+
+    def test_shutdown_waits_for_export(self):
+        svr = server(ThreadPoolExecutor(max_workers=10))
+
+        svr.add_insecure_port("127.0.0.1:4317")
+        exporter = OTLPLogExporter()
+
+        svr.start()
+        # Server will respond with OK after 3 seconds has elapsed.
+        add_LogsServiceServicer_to_server(
+            LogsServiceServicerWithExportParams(
+                StatusCode.OK, optional_export_sleep=3
+            ),
+            svr,
+        )
+        processor = BatchLogRecordProcessor(
+            exporter,
+            max_queue_size=200,
+            max_export_batch_size=10,
+            schedule_delay_millis=30000,
+        )
+        with self.assertLogs(level="WARNING") as cm:
+            processor.emit(EMPTY_LOG)
+            # Shutdown should allow the 3 second export to finish..
+            before = time.time()
+            processor.shutdown(timeout_millis=10000)
+            after = time.time()
+            self.assertTrue(after - before < 3.1)
+            print(cm.records[0].message)
+            self.assertEqual(len(cm.records), 0)
+        svr.stop(None)
+
     def test_emit_call_log_record(self):
         exporter = InMemoryLogExporter()
         log_record_processor = Mock(wraps=BatchLogRecordProcessor(exporter))

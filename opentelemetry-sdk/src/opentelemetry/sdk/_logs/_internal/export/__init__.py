@@ -189,8 +189,8 @@ class BatchLogRecordProcessor(LogRecordProcessor):
     def emit(self, log_data: LogData) -> None:
         return self._batch_processor.emit(log_data)
 
-    def shutdown(self):
-        return self._batch_processor.shutdown()
+    def shutdown(self,timeout_millis: int = 30000):
+        return self._batch_processor.shutdown(timeout_millis)
 
     def force_flush(self, timeout_millis: Optional[int] = None) -> bool:
         return self._batch_processor.force_flush(timeout_millis)
