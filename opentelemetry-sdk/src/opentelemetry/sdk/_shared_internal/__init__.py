@@ -92,6 +92,7 @@ class BatchProcessor(Generic[Telemetry]):
         self._exporting = exporting
 
         self._shutdown = False
+        self._shutdown_timeout_exceeded = False
         self._export_lock = threading.Lock()
         self._worker_awaken = threading.Event()
         self._worker_thread.start()
@@ -103,7 +104,7 @@ class BatchProcessor(Generic[Telemetry]):
     def _should_export_batch(
         self, batch_strategy: BatchExportStrategy, num_iterations: int
     ) -> bool:
-        if not self._queue:
+        if not self._queue or self._shutdown_timeout_exceeded:
             return False
         # Always continue to export while queue length exceeds max batch size.
         if len(self._queue) >= self._max_export_batch_size:
@@ -206,11 +207,16 @@ class BatchProcessor(Generic[Telemetry]):
         # Wait a tiny bit for the worker thread to wake and call export for a final time.
         time.sleep(0.1)
         # We will force shutdown after 30 seconds.
+        sleep_time = 0
+        before = time.time()
         for _ in range(10):
             # If export is not being called, we can shutdown.
             if not self._export_lock.locked():
                 break
             time.sleep(timeout_millis / 1000 / 10)
+        # Ensures additional export calls are not made from the batch processor.
+        self._shutdown_timeout_exceeded = True
+        print("SPENT {} time sleeping".format(time.time() - before))
         # We want to shutdown immediately because we already waited 30 seconds. Some exporter's shutdown support a timeout param.
         if (
             "timeout_millis"
@@ -219,8 +225,10 @@ class BatchProcessor(Generic[Telemetry]):
             self._exporter.shutdown(timeout_millis=0)  # type: ignore
         else:
             self._exporter.shutdown()
+        print("SPENT {} time sleeping/shutting down".format(time.time() - before))
         # Worker thread should be finished at this point and return instantly.
         self._worker_thread.join()
+        print("SPENT {} time sleeping/shuttingdown/joining".format(time.time() - before))
 
     # TODO: Fix force flush so the timeout is used https://github.com/open-telemetry/opentelemetry-python/issues/4568.
     def force_flush(self, timeout_millis: Optional[int] = None) -> bool:
