@@ -23,6 +23,7 @@ from platform import system
 from unittest.mock import Mock
 
 import pytest
+
 from opentelemetry.sdk._logs import (
     LogData,
     LogRecord,

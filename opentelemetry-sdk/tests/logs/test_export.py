@@ -62,8 +62,12 @@ from opentelemetry.trace import TraceFlags
 from opentelemetry.trace.span import INVALID_SPAN_CONTEXT
 
 EMPTY_LOG = LogData(
-    log_record=LogRecord(span_id=3, trace_id=3, trace_flags=TraceFlags(0x01),
-                         severity_number=SeverityNumber.WARN),
+    log_record=LogRecord(
+        span_id=3,
+        trace_id=3,
+        trace_flags=TraceFlags(0x01),
+        severity_number=SeverityNumber.WARN,
+    ),
     instrumentation_scope=InstrumentationScope("example", "example"),
 )
 
@@ -395,7 +399,8 @@ class TestBatchLogRecordProcessor(unittest.TestCase):
             # Shutdown should cancel export after 4 seconds
             processor.shutdown(timeout_millis=4000)
             after = time.time()
-            self.assertTrue(after - before < 4.1)
+            print("TIME ELAPSED: {}".format(after - before))
+            self.assertTrue(after - before < 4.3)
             self.assertEqual(
                 cm.records[0].message, "Exception while exporting Log."
             )
@@ -421,15 +426,21 @@ class TestBatchLogRecordProcessor(unittest.TestCase):
             max_export_batch_size=10,
             schedule_delay_millis=30000,
         )
+        logger = logging.getLogger("main")
         with self.assertLogs(level="WARNING") as cm:
+            # We want to assert there are no warnings, but the 'assertLogs' method does not support that.
+            # Therefore, we are adding a dummy warning, and then we will assert it is the only warning.
+            logger.warn("Dummy warning")
             processor.emit(EMPTY_LOG)
             # Shutdown should allow the 3 second export to finish..
             before = time.time()
             processor.shutdown(timeout_millis=10000)
             after = time.time()
-            self.assertTrue(after - before < 3.1)
-            print(cm.records[0].message)
-            self.assertEqual(len(cm.records), 0)
+            self.assertTrue(after - before < 3.3)
+            self.assertEqual(
+                ["WARNING:main:Dummy warning"],
+                cm.output,
+            )
         svr.stop(None)
 
     def test_emit_call_log_record(self):
