@@ -133,15 +133,7 @@ class BatchProcessor(Generic[Telemetry]):
             # https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/sdk.md#batching-processor.
             # Shutdown will interrupt this sleep. Emit will interrupt this sleep only if the queue is bigger then threshold.
             sleep_interrupted = self._worker_awaken.wait(self._schedule_delay)
-            print(
-                "In worker loop:{}, {}, {}".format(
-                    sleep_interrupted,
-                    self._schedule_delay,
-                    self._schedule_delay_millis,
-                )
-            )
             if self._shutdown:
-                print("Shutdown is set...")
                 break
             self._export(
                 BatchExportStrategy.EXPORT_WHILE_BATCH_EXCEEDS_THRESHOLD
@@ -149,11 +141,9 @@ class BatchProcessor(Generic[Telemetry]):
                 else BatchExportStrategy.EXPORT_AT_LEAST_ONE_BATCH
             )
             self._worker_awaken.clear()
-        print("last export bach...")
         self._export(BatchExportStrategy.EXPORT_ALL)
 
     def _export(self, batch_strategy: BatchExportStrategy) -> None:
-        print("export started...:{}".format(batch_strategy))
         with self._export_lock:
             iteration = 0
             # We could see concurrent export calls from worker and force_flush. We call _should_export_batch
@@ -162,7 +152,6 @@ class BatchProcessor(Generic[Telemetry]):
                 iteration += 1
                 token = attach(set_value(_SUPPRESS_INSTRUMENTATION_KEY, True))
                 try:
-                    print("SIZE: {}".format(len(self._queue)))
                     self._exporter.export(
                         [
                             # Oldest records are at the back, so pop from there.
@@ -176,8 +165,6 @@ class BatchProcessor(Generic[Telemetry]):
                         ]
                     )
                 except Exception as e:  # pylint: disable=broad-exception-caught
-                    print(e)
-                    raise e
                     self._logger.exception(
                         "Exception while exporting %s.", self._exporting
                     )
@@ -196,7 +183,6 @@ class BatchProcessor(Generic[Telemetry]):
         if len(self._queue) >= self._max_export_batch_size:
             self._worker_awaken.set()
 
-    # LoggerProvider calls shutdown without arguments currently, so the default is used.
     def shutdown(self, timeout_millis: int = 30000):
         if self._shutdown:
             return
@@ -206,18 +192,16 @@ class BatchProcessor(Generic[Telemetry]):
         self._worker_awaken.set()
         # Wait a tiny bit for the worker thread to wake and call export for a final time.
         time.sleep(0.1)
-        # We will force shutdown after 30 seconds.
-        sleep_time = 0
-        before = time.time()
-        for _ in range(10):
+        num_sleeps = 10
+        for _ in range(num_sleeps):
             # If export is not being called, we can shutdown.
             if not self._export_lock.locked():
                 break
-            time.sleep(timeout_millis / 1000 / 10)
-        # Ensures additional export calls are not made from the batch processor.
+            time.sleep(timeout_millis / 1000 / num_sleeps)
+        # Stops worker thread from calling export again.
         self._shutdown_timeout_exceeded = True
-        print("SPENT {} time sleeping".format(time.time() - before))
-        # We want to shutdown immediately because we already waited 30 seconds. Some exporter's shutdown support a timeout param.
+        # We want to shutdown immediately because we already waited `timeout_millis`.
+        # Some exporter's shutdown support a timeout param.
         if (
             "timeout_millis"
             in inspect.getfullargspec(self._exporter.shutdown).args
@@ -225,10 +209,8 @@ class BatchProcessor(Generic[Telemetry]):
             self._exporter.shutdown(timeout_millis=0)  # type: ignore
         else:
             self._exporter.shutdown()
-        print("SPENT {} time sleeping/shutting down".format(time.time() - before))
         # Worker thread should be finished at this point and return instantly.
         self._worker_thread.join()
-        print("SPENT {} time sleeping/shuttingdown/joining".format(time.time() - before))
 
     # TODO: Fix force flush so the timeout is used https://github.com/open-telemetry/opentelemetry-python/issues/4568.
     def force_flush(self, timeout_millis: Optional[int] = None) -> bool:
