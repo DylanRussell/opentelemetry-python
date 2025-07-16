@@ -26,7 +26,7 @@ from abc import ABC, abstractmethod
 from os import environ
 from typing import Any, Callable, Mapping, Sequence, Type, Union, Optional
 
-from grpc import ChannelCredentials  # type: ignore
+from grpc import ChannelCredentials  # pylint: disable=import-error
 from requests import Session
 from typing_extensions import Literal
 
@@ -107,7 +107,7 @@ ExporterArgsMap = Mapping[
 
 def _import_config_component(
     selected_component: str, entry_point_name: str
-) -> Type
+) -> Type:
     return _import_config_components([selected_component], entry_point_name)[
         0
     ][1]
@@ -212,7 +212,7 @@ def _get_exporter_names(
 
 
 def _init_exporter(
-    exporter_class: Type[Union[SpanExporter, MetricExporter, LogExporter]],
+    exporter_class: Union[Type[SpanExporter], Type[MetricExporter], Type[LogExporter]],
     otlp_credential_param: Optional[tuple[
         str, Union[ChannelCredentials, Session]
     ]] = None,
@@ -244,9 +244,9 @@ def _init_tracing(
     sampler: Sampler | None = None,
     resource: Resource | None = None,
     exporter_args_map: ExporterArgsMap | None = None,
-    otlp_credential_param: tuple[
-        str, Union[ChannelCredentials | Session]
-    ] = None,
+    otlp_credential_param: Optional[tuple[
+        str, Union[ChannelCredentials , Session]
+    ]] = None,
 ):
     provider = TracerProvider(
         id_generator=id_generator,
@@ -270,9 +270,10 @@ def _init_metrics(
         str, Union[Type[MetricExporter], Type[MetricReader]]
     ],
     resource: Resource = None,
-    otlp_credential_param: tuple[
-        str, Union[ChannelCredentials | Session]
-    ] = None,
+    exporter_args_map: ExporterArgsMap | None = None,
+    otlp_credential_param: Optional[tuple[
+        str, Union[ChannelCredentials, Session]
+    ]] = None,
 ):
     metric_readers = []
 
@@ -491,16 +492,13 @@ def _initialize_components(
 
     otlp_credential_param = None
     credential_env = os.getenv(OTEL_EXPORTER_OTLP_CREDENTIAL_PROVIDER)
-    print("looking for creds")
     if credential_env:
         credentials = _import_config_component(
             credential_env, "opentelemetry_otlp_credential_provider"
         )()
         if isinstance(credentials, ChannelCredentials):
-            print("found channel creds")
             otlp_credential_param = ("credentials", credentials)
         elif isinstance(credentials, Session):
-            print("found session")
             otlp_credential_param = ("session", credentials)
         else:
             raise RuntimeError(
