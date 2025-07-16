@@ -40,21 +40,21 @@ CallbackT = Union[
 
 SYSTEM_CPU_FREQUENCY: Final = "system.cpu.frequency"
 """
-Reports the current frequency of the CPU in Hz
+Operating frequency of the logical CPU in Hertz
 Instrument: gauge
-Unit: {Hz}
+Unit: Hz
 """
 
 
 def create_system_cpu_frequency(
     meter: Meter, callbacks: Optional[Sequence[CallbackT]]
 ) -> ObservableGauge:
-    """Reports the current frequency of the CPU in Hz"""
+    """Operating frequency of the logical CPU in Hertz"""
     return meter.create_observable_gauge(
         name=SYSTEM_CPU_FREQUENCY,
         callbacks=callbacks,
-        description="Reports the current frequency of the CPU in Hz",
-        unit="{Hz}",
+        description="Operating frequency of the logical CPU in Hertz.",
+        unit="Hz",
     )
 
 
@@ -113,7 +113,7 @@ def create_system_cpu_time(meter: Meter) -> Counter:
 
 SYSTEM_CPU_UTILIZATION: Final = "system.cpu.utilization"
 """
-Difference in system.cpu.time since the last measurement, divided by the elapsed time and number of logical CPUs
+For each logical CPU, the utilization is calculated as the change in cumulative CPU time (cpu.time) over a measurement interval, divided by the elapsed time
 Instrument: gauge
 Unit: 1
 """
@@ -122,11 +122,11 @@ Unit: 1
 def create_system_cpu_utilization(
     meter: Meter, callbacks: Optional[Sequence[CallbackT]]
 ) -> ObservableGauge:
-    """Difference in system.cpu.time since the last measurement, divided by the elapsed time and number of logical CPUs"""
+    """For each logical CPU, the utilization is calculated as the change in cumulative CPU time (cpu.time) over a measurement interval, divided by the elapsed time"""
     return meter.create_observable_gauge(
         name=SYSTEM_CPU_UTILIZATION,
         callbacks=callbacks,
-        description="Difference in system.cpu.time since the last measurement, divided by the elapsed time and number of logical CPUs",
+        description="For each logical CPU, the utilization is calculated as the change in cumulative CPU time (cpu.time) over a measurement interval, divided by the elapsed time.",
         unit="1",
     )
 
@@ -407,17 +407,32 @@ def create_system_memory_utilization(
     )
 
 
-SYSTEM_NETWORK_CONNECTIONS: Final = "system.network.connections"
+SYSTEM_NETWORK_CONNECTION_COUNT: Final = "system.network.connection.count"
 """
 Instrument: updowncounter
 Unit: {connection}
 """
 
 
+def create_system_network_connection_count(meter: Meter) -> UpDownCounter:
+    return meter.create_up_down_counter(
+        name=SYSTEM_NETWORK_CONNECTION_COUNT,
+        description="",
+        unit="{connection}",
+    )
+
+
+SYSTEM_NETWORK_CONNECTIONS: Final = "system.network.connections"
+"""
+Deprecated: Replaced by `system.network.connection.count`.
+"""
+
+
 def create_system_network_connections(meter: Meter) -> UpDownCounter:
+    """Deprecated, use `system.network.connection.count` instead"""
     return meter.create_up_down_counter(
         name=SYSTEM_NETWORK_CONNECTIONS,
-        description="",
+        description="Deprecated, use `system.network.connection.count` instead",
         unit="{connection}",
     )
 

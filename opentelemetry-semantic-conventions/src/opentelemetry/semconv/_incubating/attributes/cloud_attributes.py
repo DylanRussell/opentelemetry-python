@@ -39,13 +39,13 @@ Name of the cloud provider.
 
 CLOUD_REGION: Final = "cloud.region"
 """
-The geographical region the resource is running.
+The geographical region within a cloud provider. When associated with a resource, this attribute specifies the region where the resource operates. When calling services or APIs deployed on a cloud, this attribute identifies the region where the called destination is deployed.
 Note: Refer to your provider's docs to see the available regions, for example [Alibaba Cloud regions](https://www.alibabacloud.com/help/doc-detail/40654.htm), [AWS regions](https://aws.amazon.com/about-aws/global-infrastructure/regions_az/), [Azure regions](https://azure.microsoft.com/global-infrastructure/geographies/), [Google Cloud regions](https://cloud.google.com/about/locations), or [Tencent Cloud regions](https://www.tencentcloud.com/document/product/213/6091).
 """
 
 CLOUD_RESOURCE_ID: Final = "cloud.resource_id"
 """
-Cloud provider-specific native identifier of the monitored cloud resource (e.g. an [ARN](https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html) on AWS, a [fully qualified resource ID](https://learn.microsoft.com/rest/api/resources/resources/get-by-id) on Azure, a [full resource name](https://cloud.google.com/apis/design/resource_names#full_resource_name) on GCP).
+Cloud provider-specific native identifier of the monitored cloud resource (e.g. an [ARN](https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html) on AWS, a [fully qualified resource ID](https://learn.microsoft.com/rest/api/resources/resources/get-by-id) on Azure, a [full resource name](https://google.aip.dev/122#full-resource-names) on GCP).
 Note: On some cloud providers, it may not be possible to determine the full ID at startup,
 so it may be necessary to set `cloud.resource_id` as a span attribute instead.
 
@@ -58,7 +58,7 @@ The following well-known definitions MUST be used if you set this attribute and 
   with the resolved function version, as the same runtime instance may be invocable with
   multiple different aliases.
 - **GCP:** The [URI of the resource](https://cloud.google.com/iam/docs/full-resource-names)
-- **Azure:** The [Fully Qualified Resource ID](https://docs.microsoft.com/rest/api/resources/resources/get-by-id) of the invoked function,
+- **Azure:** The [Fully Qualified Resource ID](https://learn.microsoft.com/rest/api/resources/resources/get-by-id) of the invoked function,
   *not* the function app, having the form
   `/subscriptions/<SUBSCRIPTION_GUID>/resourceGroups/<RG>/providers/Microsoft.Web/sites/<FUNCAPP>/functions/<FUNC>`.
   This means that a span attribute MUST be used, as an Azure function app can host multiple functions that would usually share
@@ -87,19 +87,19 @@ class CloudPlatformValues(Enum):
     """AWS App Runner."""
     AWS_OPENSHIFT = "aws_openshift"
     """Red Hat OpenShift on AWS (ROSA)."""
-    AZURE_VM = "azure_vm"
+    AZURE_VM = "azure.vm"
     """Azure Virtual Machines."""
-    AZURE_CONTAINER_APPS = "azure_container_apps"
+    AZURE_CONTAINER_APPS = "azure.container_apps"
     """Azure Container Apps."""
-    AZURE_CONTAINER_INSTANCES = "azure_container_instances"
+    AZURE_CONTAINER_INSTANCES = "azure.container_instances"
     """Azure Container Instances."""
-    AZURE_AKS = "azure_aks"
+    AZURE_AKS = "azure.aks"
     """Azure Kubernetes Service."""
-    AZURE_FUNCTIONS = "azure_functions"
+    AZURE_FUNCTIONS = "azure.functions"
     """Azure Functions."""
-    AZURE_APP_SERVICE = "azure_app_service"
+    AZURE_APP_SERVICE = "azure.app_service"
     """Azure App Service."""
-    AZURE_OPENSHIFT = "azure_openshift"
+    AZURE_OPENSHIFT = "azure.openshift"
     """Azure Red Hat OpenShift."""
     GCP_BARE_METAL_SOLUTION = "gcp_bare_metal_solution"
     """Google Bare Metal Solution (BMS)."""

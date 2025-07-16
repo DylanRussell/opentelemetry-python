@@ -11,9 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
 
 import abc
 import atexit
+import base64
 import concurrent.futures
 import json
 import logging
@@ -23,7 +25,7 @@ import warnings
 from os import environ
 from threading import Lock
 from time import time_ns
-from typing import Any, Callable, Optional, Tuple, Union  # noqa
+from typing import Any, Callable, Tuple, Union, cast, overload  # noqa
 
 from opentelemetry._logs import Logger as APILogger
 from opentelemetry._logs import LoggerProvider as APILoggerProvider
@@ -35,7 +37,9 @@ from opentelemetry._logs import (
     get_logger_provider,
     std_to_otel,
 )
-from opentelemetry.attributes import BoundedAttributes
+from opentelemetry.attributes import _VALID_ANY_VALUE_TYPES, BoundedAttributes
+from opentelemetry.context import get_current
+from opentelemetry.context.context import Context
 from opentelemetry.sdk.environment_variables import (
     OTEL_ATTRIBUTE_COUNT_LIMIT,
     OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT,
@@ -44,19 +48,27 @@ from opentelemetry.sdk.environment_variables import (
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.util import ns_to_iso_str
 from opentelemetry.sdk.util.instrumentation import InstrumentationScope
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.semconv._incubating.attributes import code_attributes
+from opentelemetry.semconv.attributes import exception_attributes
 from opentelemetry.trace import (
     format_span_id,
     format_trace_id,
     get_current_span,
 )
 from opentelemetry.trace.span import TraceFlags
-from opentelemetry.util.types import AnyValue, Attributes
+from opentelemetry.util.types import AnyValue, _ExtendedAttributes
 
 _logger = logging.getLogger(__name__)
 
 _DEFAULT_OTEL_ATTRIBUTE_COUNT_LIMIT = 128
 _ENV_VALUE_UNSET = ""
+
+
+class BytesEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, bytes):
+            return base64.b64encode(o).decode()
+        return super().default(o)
 
 
 class LogDroppedAttributesWarning(UserWarning):
@@ -69,6 +81,18 @@ class LogDroppedAttributesWarning(UserWarning):
 
 
 warnings.simplefilter("once", LogDroppedAttributesWarning)
+
+
+class LogDeprecatedInitWarning(UserWarning):
+    """Custom warning to indicate deprecated LogRecord init was used.
+
+    This class is used to filter and handle these specific warnings separately
+    from other warnings, ensuring that they are only shown once without
+    interfering with default user warnings.
+    """
+
+
+warnings.simplefilter("once", LogDeprecatedInitWarning)
 
 
 class LogLimits:
@@ -105,8 +129,8 @@ class LogLimits:
 
     def __init__(
         self,
-        max_attributes: Optional[int] = None,
-        max_attribute_length: Optional[int] = None,
+        max_attributes: int | None = None,
+        max_attribute_length: int | None = None,
     ):
         # attribute count
         global_max_attributes = self._from_env_if_absent(
@@ -129,12 +153,12 @@ class LogLimits:
 
     @classmethod
     def _from_env_if_absent(
-        cls, value: Optional[int], env_var: str, default: Optional[int] = None
-    ) -> Optional[int]:
+        cls, value: int | None, env_var: str, default: int | None = None
+    ) -> int | None:
         if value == cls.UNSET:
             return None
 
-        err_msg = "{0} must be a non-negative integer but got {}"
+        err_msg = "{} must be a non-negative integer but got {}"
 
         # if no value is provided for the limit, try to load it from env
         if value is None:
@@ -170,24 +194,74 @@ class LogRecord(APILogRecord):
     pertinent to the event being logged.
     """
 
+    @overload
     def __init__(
         self,
-        timestamp: Optional[int] = None,
-        observed_timestamp: Optional[int] = None,
-        trace_id: Optional[int] = None,
-        span_id: Optional[int] = None,
-        trace_flags: Optional[TraceFlags] = None,
-        severity_text: Optional[str] = None,
-        severity_number: Optional[SeverityNumber] = None,
-        body: Optional[AnyValue] = None,
-        resource: Optional[Resource] = None,
-        attributes: Optional[Attributes] = None,
-        limits: Optional[LogLimits] = _UnsetLogLimits,
+        timestamp: int | None = None,
+        observed_timestamp: int | None = None,
+        context: Context | None = None,
+        severity_text: str | None = None,
+        severity_number: SeverityNumber | None = None,
+        body: AnyValue | None = None,
+        resource: Resource | None = None,
+        attributes: _ExtendedAttributes | None = None,
+        limits: LogLimits | None = _UnsetLogLimits,
+    ): ...
+
+    @overload
+    def __init__(
+        self,
+        timestamp: int | None = None,
+        observed_timestamp: int | None = None,
+        trace_id: int | None = None,
+        span_id: int | None = None,
+        trace_flags: TraceFlags | None = None,
+        severity_text: str | None = None,
+        severity_number: SeverityNumber | None = None,
+        body: AnyValue | None = None,
+        resource: Resource | None = None,
+        attributes: _ExtendedAttributes | None = None,
+        limits: LogLimits | None = _UnsetLogLimits,
+    ): ...
+
+    def __init__(
+        self,
+        timestamp: int | None = None,
+        observed_timestamp: int | None = None,
+        context: Context | None = None,
+        trace_id: int | None = None,
+        span_id: int | None = None,
+        trace_flags: TraceFlags | None = None,
+        severity_text: str | None = None,
+        severity_number: SeverityNumber | None = None,
+        body: AnyValue | None = None,
+        resource: Resource | None = None,
+        attributes: _ExtendedAttributes | None = None,
+        limits: LogLimits | None = _UnsetLogLimits,
     ):
+        if trace_id or span_id or trace_flags:
+            warnings.warn(
+                "LogRecord init with `trace_id`, `span_id`, and/or `trace_flags` is deprecated. Use `context` instead.",
+                LogDeprecatedInitWarning,
+                stacklevel=2,
+            )
+
+        if not context:
+            context = get_current()
+
+        if context is not None:
+            span = get_current_span(context)
+            span_context = span.get_span_context()
+            if span_context.is_valid:
+                trace_id = span_context.trace_id
+                span_id = span_context.span_id
+                trace_flags = span_context.trace_flags
+
         super().__init__(
             **{
                 "timestamp": timestamp,
                 "observed_timestamp": observed_timestamp,
+                "context": context,
                 "trace_id": trace_id,
                 "span_id": span_id,
                 "trace_flags": trace_flags,
@@ -199,6 +273,7 @@ class LogRecord(APILogRecord):
                     attributes=attributes if bool(attributes) else None,
                     immutable=False,
                     max_value_len=limits.max_attribute_length,
+                    extended_attributes=True,
                 ),
             }
         )
@@ -217,7 +292,7 @@ class LogRecord(APILogRecord):
             return NotImplemented
         return self.__dict__ == other.__dict__
 
-    def to_json(self, indent=4) -> str:
+    def to_json(self, indent: int | None = 4) -> str:
         return json.dumps(
             {
                 "body": self.body,
@@ -245,12 +320,16 @@ class LogRecord(APILogRecord):
                 "resource": json.loads(self.resource.to_json()),
             },
             indent=indent,
+            cls=BytesEncoder,
         )
 
     @property
     def dropped_attributes(self) -> int:
-        if self.attributes:
-            return self.attributes.dropped
+        attributes: BoundedAttributes = cast(
+            BoundedAttributes, self.attributes
+        )
+        if attributes:
+            return attributes.dropped
         return 0
 
 
@@ -476,28 +555,30 @@ class LoggingHandler(logging.Handler):
         self._logger_provider = logger_provider or get_logger_provider()
 
     @staticmethod
-    def _get_attributes(record: logging.LogRecord) -> Attributes:
+    def _get_attributes(record: logging.LogRecord) -> _ExtendedAttributes:
         attributes = {
             k: v for k, v in vars(record).items() if k not in _RESERVED_ATTRS
         }
 
         # Add standard code attributes for logs.
-        attributes[SpanAttributes.CODE_FILEPATH] = record.pathname
-        attributes[SpanAttributes.CODE_FUNCTION] = record.funcName
-        attributes[SpanAttributes.CODE_LINENO] = record.lineno
+        attributes[code_attributes.CODE_FILE_PATH] = record.pathname
+        attributes[code_attributes.CODE_FUNCTION_NAME] = record.funcName
+        attributes[code_attributes.CODE_LINE_NUMBER] = record.lineno
 
         if record.exc_info:
             exctype, value, tb = record.exc_info
             if exctype is not None:
-                attributes[SpanAttributes.EXCEPTION_TYPE] = exctype.__name__
+                attributes[exception_attributes.EXCEPTION_TYPE] = (
+                    exctype.__name__
+                )
             if value is not None and value.args:
-                attributes[SpanAttributes.EXCEPTION_MESSAGE] = str(
+                attributes[exception_attributes.EXCEPTION_MESSAGE] = str(
                     value.args[0]
                 )
             if tb is not None:
-                # https://github.com/open-telemetry/opentelemetry-specification/blob/9fa7c656b26647b27e485a6af7e38dc716eba98a/specification/trace/semantic_conventions/exceptions.md#stacktrace-representation
-                attributes[SpanAttributes.EXCEPTION_STACKTRACE] = "".join(
-                    traceback.format_exception(*record.exc_info)
+                # https://opentelemetry.io/docs/specs/semconv/exceptions/exceptions-spans/#stacktrace-representation
+                attributes[exception_attributes.EXCEPTION_STACKTRACE] = (
+                    "".join(traceback.format_exception(*record.exc_info))
                 )
         return attributes
 
@@ -522,8 +603,11 @@ class LoggingHandler(logging.Handler):
             # itself instead of its string representation.
             # For more background, see: https://github.com/open-telemetry/opentelemetry-python/pull/4216
             if not record.args and not isinstance(record.msg, str):
-                # no args are provided so it's *mostly* safe to use the message template as the body
-                body = record.msg
+                #  if record.msg is not a value we can export, cast it to string
+                if not isinstance(record.msg, _VALID_ANY_VALUE_TYPES):
+                    body = str(record.msg)
+                else:
+                    body = record.msg
             else:
                 body = record.getMessage()
 
@@ -602,12 +686,11 @@ class Logger(APILogger):
 class LoggerProvider(APILoggerProvider):
     def __init__(
         self,
-        resource: Resource = None,
+        resource: Resource | None = None,
         shutdown_on_exit: bool = True,
-        multi_log_record_processor: Union[
-            SynchronousMultiLogRecordProcessor,
-            ConcurrentMultiLogRecordProcessor,
-        ] = None,
+        multi_log_record_processor: SynchronousMultiLogRecordProcessor
+        | ConcurrentMultiLogRecordProcessor
+        | None = None,
     ):
         if resource is None:
             self._resource = Resource.create({})
@@ -631,9 +714,9 @@ class LoggerProvider(APILoggerProvider):
     def _get_logger_no_cache(
         self,
         name: str,
-        version: Optional[str] = None,
-        schema_url: Optional[str] = None,
-        attributes: Optional[Attributes] = None,
+        version: str | None = None,
+        schema_url: str | None = None,
+        attributes: _ExtendedAttributes | None = None,
     ) -> Logger:
         return Logger(
             self._resource,
@@ -649,8 +732,8 @@ class LoggerProvider(APILoggerProvider):
     def _get_logger_cached(
         self,
         name: str,
-        version: Optional[str] = None,
-        schema_url: Optional[str] = None,
+        version: str | None = None,
+        schema_url: str | None = None,
     ) -> Logger:
         with self._logger_cache_lock:
             key = (name, version, schema_url)
@@ -665,9 +748,9 @@ class LoggerProvider(APILoggerProvider):
     def get_logger(
         self,
         name: str,
-        version: Optional[str] = None,
-        schema_url: Optional[str] = None,
-        attributes: Optional[Attributes] = None,
+        version: str | None = None,
+        schema_url: str | None = None,
+        attributes: _ExtendedAttributes | None = None,
     ) -> Logger:
         if self._disabled:
             return NoOpLogger(

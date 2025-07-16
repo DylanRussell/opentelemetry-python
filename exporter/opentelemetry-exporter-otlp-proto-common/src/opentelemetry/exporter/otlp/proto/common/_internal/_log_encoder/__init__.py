@@ -57,9 +57,12 @@ def _encode_log(log_data: LogData) -> PB2LogRecord:
         flags=int(log_data.log_record.trace_flags),
         body=_encode_value(body, allow_null=True),
         severity_text=log_data.log_record.severity_text,
-        attributes=_encode_attributes(log_data.log_record.attributes),
+        attributes=_encode_attributes(
+            log_data.log_record.attributes, allow_null=True
+        ),
         dropped_attributes_count=log_data.log_record.dropped_attributes,
         severity_number=log_data.log_record.severity_number.value,
+        event_name=log_data.log_record.event_name,
     )
 
 
@@ -82,6 +85,9 @@ def _encode_resource_logs(batch: Sequence[LogData]) -> List[ResourceLogs]:
                 ScopeLogs(
                     scope=(_encode_instrumentation_scope(sdk_instrumentation)),
                     log_records=pb2_logs,
+                    schema_url=sdk_instrumentation.schema_url
+                    if sdk_instrumentation
+                    else None,
                 )
             )
         pb2_resource_logs.append(

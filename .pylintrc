@@ -45,7 +45,7 @@ suggestion-mode=yes
 unsafe-load-any-extension=no
 
 # Run python dependant checks considering the baseline version
-py-version=3.8
+py-version=3.9
 
 
 [MESSAGES CONTROL]
@@ -68,6 +68,7 @@ disable=missing-docstring,
       too-few-public-methods, # Might be good to re-enable this later.
       too-many-instance-attributes,
       too-many-arguments,
+      too-many-positional-arguments,
       duplicate-code,
       ungrouped-imports, # Leave this up to isort
       wrong-import-order, # Leave this up to isort
