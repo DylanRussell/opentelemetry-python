@@ -585,7 +585,7 @@ class LoggingHandler(logging.Handler):
                 )
         return attributes
 
-    def _translate(self, record: logging.LogRecord) -> LogRecord:
+    def _translate(self, record: logging.LogRecord) -> APILogRecord:
         timestamp = int(record.created * 1e9)
         observered_timestamp = time_ns()
         attributes = self._get_attributes(record)
@@ -620,14 +620,13 @@ class LoggingHandler(logging.Handler):
         )
 
         logger = get_logger(record.name, logger_provider=self._logger_provider)
-        return LogRecord(
+        return APILogRecord(
             timestamp=timestamp,
             observed_timestamp=observered_timestamp,
             context=get_current() or None,
             severity_text=level_name,
             severity_number=severity_number,
             body=body,
-            resource=logger.resource,
             attributes=attributes,
         )
 
@@ -675,7 +674,7 @@ class Logger(APILogger):
     def resource(self):
         return self._resource
 
-    def emit(self, record: LogRecord):
+    def emit(self, record: APILogRecord):
         """Emits the :class:`LogData` by associating :class:`LogRecord`
         and instrumentation info.
         """
