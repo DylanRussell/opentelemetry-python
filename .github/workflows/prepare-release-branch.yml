@@ -95,19 +95,12 @@ jobs:
       - name: Use CLA approved github bot
         run: .github/scripts/use-cla-approved-github-bot.sh
 
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        id: otelbot-token
-        with:
-          client-id: ${{ vars.OTELBOT_CLIENT_ID }}
-          private-key: ${{ secrets.OTELBOT_PRIVATE_KEY }}
-          permission-pull-requests: write
-
       - name: Create pull request against the release branch
         id: create_release_branch_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # not using secrets.GITHUB_TOKEN for pr create since pull requests from that token do not run workflows
-          PR_TOKEN: ${{ steps.otelbot-token.outputs.token }}
+          PR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           message="Prepare release ${STABLE_VERSION}/${UNSTABLE_VERSION}"
           branch="otelbot/prepare-release-${STABLE_VERSION}-${UNSTABLE_VERSION}"
@@ -195,19 +188,12 @@ jobs:
       - name: Use CLA approved github bot
         run: .github/scripts/use-cla-approved-github-bot.sh
 
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        id: otelbot-token
-        with:
-          client-id: ${{ vars.OTELBOT_CLIENT_ID }}
-          private-key: ${{ secrets.OTELBOT_PRIVATE_KEY }}
-          permission-pull-requests: write
-
       - name: Create pull request against main
         id: create_main_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # not using secrets.GITHUB_TOKEN for pr create since pull requests from that token do not run workflows
-          PR_TOKEN: ${{ steps.otelbot-token.outputs.token }}
+          PR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           message="Update version to ${STABLE_NEXT_VERSION}/${UNSTABLE_NEXT_VERSION}"
           body="Update version to \`${STABLE_NEXT_VERSION}/${UNSTABLE_NEXT_VERSION}\`."

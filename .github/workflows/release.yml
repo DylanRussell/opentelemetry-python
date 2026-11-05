@@ -95,14 +95,14 @@ jobs:
           TWINE_USERNAME: '__token__'
           TWINE_PASSWORD: ${{ secrets.test_pypi_token }}
         run: |
-          uv run --frozen --only-dev twine upload --repository testpypi --skip-existing --verbose dist/*
+          uv run --frozen --only-dev twine check dist/*
 
       - name: Publish to PyPI
         env:
           TWINE_USERNAME: '__token__'
           TWINE_PASSWORD: ${{ secrets.pypi_password }}
         run: |
-          uv run --frozen --only-dev twine upload --skip-existing --verbose dist/*
+          uv run --frozen --only-dev twine check dist/*
 
       - name: Generate release notes
         env:
@@ -133,5 +133,4 @@ jobs:
           gh release create --target $GITHUB_REF_NAME \
                             --title "Version ${STABLE_VERSION}/${UNSTABLE_VERSION}" \
                             --notes-file /tmp/release-notes.txt \
-                            --discussion-category announcements \
                             v$STABLE_VERSION
