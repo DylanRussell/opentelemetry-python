@@ -1,1 +1,0 @@
-`opentelemetry-api`: drop the new attribute instead of the oldest one when `BoundedAttributes` is full

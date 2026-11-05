@@ -1,1 +1,0 @@
-`opentelemetry-sdk`: add return type annotation to InMemoryLogRecordExporter.__init__
