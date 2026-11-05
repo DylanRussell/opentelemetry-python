@@ -1,1 +1,0 @@
-`opentelemetry-configuration`: Fix literal bracket matching and enforce case-sensitive configuration wildcard semantics.

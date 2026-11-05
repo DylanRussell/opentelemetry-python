@@ -1,1 +1,0 @@
-`opentelemetry-sdk`: add return type annotations to `SynchronousMultiLogRecordProcessor` and `ConcurrentMultiLogRecordProcessor`
